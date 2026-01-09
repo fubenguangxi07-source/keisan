@@ -1,354 +1,436 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Printer, Trash2, Save, FileText, ChevronDown, ChevronUp, Plus, Image as ImageIcon, X } from 'lucide-react';
-
-// --- 初期データ定義 ---
-const INITIAL_CATEGORIES = [
-  {
-    id: 'personnel',
-    title: '人件費',
-    items: ['キャスト給与']
-  },
-  {
-    id: 'rent',
-    title: '家賃・固定費',
-    items: ['店舗家賃', '共益費／管理費', '駐車場代']
-  },
-  {
-    id: 'utilities',
-    title: '水道光熱費',
-    items: ['電気代', '水道代', 'ガス代']
-  },
-  {
-    id: 'supplies',
-    title: '仕入れ・消耗品費',
-    items: ['酒類', 'ソフトドリンク', 'おしぼり', 'おかし', '消耗品（洗剤・トイレットペーパー等）', 'グラス・食器補充']
-  },
-  {
-    id: 'ads',
-    title: '広告宣伝費',
-    items: ['ポータルサイト掲載料']
-  },
-  {
-    id: 'entertainment',
-    title: '接待交際費',
-    items: ['同伴・アフター飲食代', '手土産代', 'イベント飲食費']
-  },
-  {
-    id: 'transport',
-    title: '交通費',
-    items: ['タクシー代']
-  },
-  {
-    id: 'communication',
-    title: '通信・システム費',
-    items: ['システム使用料', 'インターネット代', '電話代']
-  },
-  {
-    id: 'operation',
-    title: '店舗運営費',
-    items: ['カラオケ・音響リース代', '清掃費', '害虫駆除費', '備品修理・メンテナンス費', '制服・衣装代', '雑費（インク等）']
-  },
-  {
-    id: 'fees',
-    title: '手数料',
-    items: ['クレジットカード決済手数料', '振込手数料']
-  },
-  {
-    id: 'taxes',
-    title: '税金・法定費用',
-    items: ['消費税', '事業税・住民税', '固定資産税', '風営法関連費用']
-  },
-];
-
-export default function ExpenseApp() {
-  // --- State ---
-  // データ構造: { [itemId]: { amount: number, note: string, image: string(base64) } }
-  const [expenseData, setExpenseData] = useState({});
-  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-  const [expandedCategories, setExpandedCategories] = useState({});
-  const [showPreviewModal, setShowPreviewModal] = useState(null); // 画像プレビュー用
-
-  // --- 初期化 & ローカルストレージ読み込み ---
-  useEffect(() => {
-    const savedData = localStorage.getItem(`expense_data_${currentMonth}`);
-    if (savedData) {
-      setExpenseData(JSON.parse(savedData));
-    } else {
-      setExpenseData({});
-    }
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>店舗経費マネージャー</title>
     
-    // 全カテゴリを展開状態にする
-    const allExpanded = INITIAL_CATEGORIES.reduce((acc, cat) => ({...acc, [cat.id]: true}), {});
-    setExpandedCategories(allExpanded);
-  }, [currentMonth]);
+    <!-- Tailwind CSS (デザイン用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-  // --- データ保存 ---
-  useEffect(() => {
-    localStorage.setItem(`expense_data_${currentMonth}`, JSON.stringify(expenseData));
-  }, [expenseData, currentMonth]);
-
-  // --- ハンドラー ---
-  const handleAmountChange = (categoryIndex, itemIndex, value) => {
-    const key = `${categoryIndex}-${itemIndex}`;
-    setExpenseData(prev => ({
-      ...prev,
-      [key]: { ...prev[key], amount: value === '' ? 0 : parseInt(value, 10) }
-    }));
-  };
-
-  const handleNoteChange = (categoryIndex, itemIndex, text) => {
-    const key = `${categoryIndex}-${itemIndex}`;
-    setExpenseData(prev => ({
-      ...prev,
-      [key]: { ...prev[key], note: text }
-    }));
-  };
-
-  const handleImageUpload = (categoryIndex, itemIndex, e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const key = `${categoryIndex}-${itemIndex}`;
-      setExpenseData(prev => ({
-        ...prev,
-        [key]: { ...prev[key], image: reader.result }
-      }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const removeImage = (categoryIndex, itemIndex) => {
-    const key = `${categoryIndex}-${itemIndex}`;
-    setExpenseData(prev => {
-      const newData = { ...prev };
-      if (newData[key]) {
-        delete newData[key].image;
-      }
-      return newData;
-    });
-  };
-
-  const toggleCategory = (id) => {
-    setExpandedCategories(prev => ({...prev, [id]: !prev[id]}));
-  };
-
-  const clearData = () => {
-    if (confirm('今月のデータを全て消去しますか？この操作は取り消せません。')) {
-      setExpenseData({});
-    }
-  };
-
-  const printReport = () => {
-    window.print();
-  };
-
-  // --- 計算ロジック ---
-  const calculateCategoryTotal = (catIndex) => {
-    let total = 0;
-    INITIAL_CATEGORIES[catIndex].items.forEach((_, itemIndex) => {
-      const key = `${catIndex}-${itemIndex}`;
-      total += expenseData[key]?.amount || 0;
-    });
-    return total;
-  };
-
-  const calculateGrandTotal = () => {
-    let total = 0;
-    INITIAL_CATEGORIES.forEach((cat, catIndex) => {
-      total += calculateCategoryTotal(catIndex);
-    });
-    return total;
-  };
-
-  // --- レンダリング ---
-  return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-20 print:bg-white print:pb-0">
-      
-      {/* ヘッダー (画面上部固定) */}
-      <header className="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md print:hidden">
-        <div className="max-w-3xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-lg font-bold">店舗経費マネージャー</h1>
-            <input 
-              type="month" 
-              value={currentMonth}
-              onChange={(e) => setCurrentMonth(e.target.value)}
-              className="bg-slate-800 text-white text-sm border-none rounded mt-1 px-2 py-1 focus:ring-1 focus:ring-blue-400"
-            />
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-400">合計支出</p>
-            <p className="text-2xl font-bold text-green-400">¥{calculateGrandTotal().toLocaleString()}</p>
-          </div>
-        </div>
-      </header>
-
-      {/* 印刷用ヘッダー (通常時は非表示) */}
-      <div className="hidden print:block p-8 pb-4">
-        <h1 className="text-3xl font-bold text-center mb-2">{currentMonth.split('-')[0]}年{currentMonth.split('-')[1]}月 店舗経費報告書</h1>
-        <div className="text-right mt-4">
-          <span className="text-xl font-bold border-b-2 border-black pb-1">合計: ¥{calculateGrandTotal().toLocaleString()}</span>
-        </div>
-      </div>
-
-      {/* メインコンテンツ */}
-      <main className="max-w-3xl mx-auto p-4 space-y-4 print:p-8 print:space-y-6">
-        
-        {INITIAL_CATEGORIES.map((category, catIndex) => {
-          const catTotal = calculateCategoryTotal(catIndex);
-          const isExpanded = expandedCategories[category.id];
-
-          return (
-            <div key={category.id} className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200 print:shadow-none print:border-gray-300 print:break-inside-avoid">
-              
-              {/* カテゴリヘッダー */}
-              <div 
-                className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer select-none print:bg-gray-100"
-                onClick={() => toggleCategory(category.id)}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500 print:hidden">
-                    {isExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
-                  </span>
-                  <h2 className="font-bold text-lg text-slate-700">{category.title}</h2>
-                </div>
-                <div className="font-bold text-slate-700">
-                  ¥{catTotal.toLocaleString()}
-                </div>
-              </div>
-
-              {/* アイテムリスト */}
-              {(isExpanded || true) && ( // 印刷時は強制表示にするためCSSで制御、JSでは常にレンダリングしておく方が安全だが簡易実装
-                <div className={`${isExpanded ? 'block' : 'hidden'} print:block p-2`}>
-                  {category.items.map((item, itemIndex) => {
-                    const key = `${catIndex}-${itemIndex}`;
-                    const data = expenseData[key] || { amount: 0, note: '', image: null };
-
-                    return (
-                      <div key={itemIndex} className="flex flex-col border-b border-gray-100 last:border-0 py-3 px-2">
-                        
-                        {/* 入力行 */}
-                        <div className="flex justify-between items-center gap-3">
-                          <label className="flex-1 font-medium text-gray-700 text-sm">{item}</label>
-                          <div className="flex items-center gap-2 w-1/2 justify-end">
-                            <span className="text-gray-400 text-sm">¥</span>
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              value={data.amount || ''}
-                              onChange={(e) => handleAmountChange(catIndex, itemIndex, e.target.value)}
-                              placeholder="0"
-                              className="w-full max-w-[120px] text-right p-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-lg print:border-none print:bg-transparent print:w-auto"
-                            />
-                          </div>
-                        </div>
-
-                        {/* オプション行 (メモ & カメラ) - 印刷時は値がある場合のみ表示 */}
-                        <div className="mt-2 flex items-center justify-between gap-2 print:mt-1">
-                          <input
-                            type="text"
-                            value={data.note || ''}
-                            onChange={(e) => handleNoteChange(catIndex, itemIndex, e.target.value)}
-                            placeholder="メモを入力..."
-                            className="flex-1 text-xs text-gray-500 bg-gray-50 border-none rounded px-2 py-1 focus:ring-1 focus:ring-blue-200 print:bg-transparent print:pl-0"
-                          />
-                          
-                          {/* カメラボタン & 画像プレビュー */}
-                          <div className="flex items-center gap-2">
-                            {data.image ? (
-                              <div className="relative group">
-                                <img 
-                                  src={data.image} 
-                                  alt="Receipt" 
-                                  className="w-8 h-8 object-cover rounded border border-gray-300 cursor-pointer"
-                                  onClick={() => setShowPreviewModal(data.image)}
-                                />
-                                <button 
-                                  onClick={() => removeImage(catIndex, itemIndex)}
-                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 print:hidden opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X size={10} />
-                                </button>
-                              </div>
-                            ) : (
-                              <label className="cursor-pointer text-gray-400 hover:text-blue-500 print:hidden p-1">
-                                <input 
-                                  type="file" 
-                                  accept="image/*" 
-                                  capture="environment" 
-                                  className="hidden"
-                                  onChange={(e) => handleImageUpload(catIndex, itemIndex, e)}
-                                />
-                                <Camera size={20} />
-                              </label>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 印刷用の画像表示エリア (小さく表示) */}
-                        {data.image && (
-                          <div className="hidden print:block mt-2">
-                             <p className="text-[10px] text-gray-400 mb-1">添付画像:</p>
-                             <img src={data.image} className="max-h-[100px] object-contain border border-gray-200" alt="添付" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </main>
-
-      {/* フッターアクション (画面下部固定) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg print:hidden z-20">
-        <div className="max-w-3xl mx-auto flex justify-between gap-4">
-          <button 
-            onClick={clearData}
-            className="flex items-center justify-center gap-2 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
-          >
-            <Trash2 size={18} />
-            クリア
-          </button>
-          
-          <button 
-            onClick={printReport}
-            className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-700 active:scale-95 transition-all font-bold"
-          >
-            <Printer size={20} />
-            レポートを作成 / 印刷
-          </button>
-        </div>
-      </div>
-
-      {/* 画像プレビューモーダル */}
-      {showPreviewModal && (
-        <div 
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowPreviewModal(null)}
-        >
-          <div className="relative max-w-full max-h-full">
-            <img src={showPreviewModal} alt="Preview" className="max-w-full max-h-[90vh] object-contain rounded" />
-            <button className="absolute -top-10 right-0 text-white p-2">
-              <X size={24} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 印刷用スタイル調整 */}
-      <style>{`
+    <style>
         @media print {
-          @page { margin: 15mm; }
-          body { -webkit-print-color-adjust: exact; background-color: white; }
-          .print\\:hidden { display: none !important; }
-          .print\\:block { display: block !important; }
+            @page { margin: 10mm; size: A4; }
+            body { -webkit-print-color-adjust: exact; background-color: white; }
+            .print\:hidden { display: none !important; }
+            .print\:block { display: block !important; }
+            .break-inside-avoid { break-inside: avoid; }
+            /* 印刷時にShadowを消す */
+            .shadow-sm, .shadow-md, .shadow-lg { box-shadow: none !important; }
+            /* 入力欄の枠線を消す */
+            input { border: none !important; background: transparent !important; }
         }
-      `}</style>
-    </div>
-  );
-}
+        /* モバイルでのタップハイライトを無効化 */
+        * { -webkit-tap-highlight-color: transparent; }
+        
+        /* スムーズな開閉アニメーション */
+        .category-content {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans pb-24 print:bg-white print:pb-0">
+
+    <!-- アプリケーションコンテナ -->
+    <div id="app"></div>
+
+    <!-- モーダルコンテナ -->
+    <div id="modal-container"></div>
+
+    <script>
+        // --- アイコン (SVG文字列) ---
+        const ICONS = {
+            camera: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
+            printer: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`,
+            trash: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+            chevronDown: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+            chevronUp: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
+            x: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+            xLarge: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+        };
+
+        // --- 初期データ定義 ---
+        const INITIAL_CATEGORIES = [
+          { id: 'personnel', title: '人件費', items: ['キャスト給与'] },
+          { id: 'rent', title: '家賃・固定費', items: ['店舗家賃', '共益費／管理費', '駐車場代'] },
+          { id: 'utilities', title: '水道光熱費', items: ['電気代', '水道代', 'ガス代'] },
+          { id: 'supplies', title: '仕入れ・消耗品費', items: ['酒類', 'ソフトドリンク', 'おしぼり', 'おかし', '消耗品（洗剤・トイレットペーパー等）', 'グラス・食器補充'] },
+          { id: 'ads', title: '広告宣伝費', items: ['ポータルサイト掲載料'] },
+          { id: 'entertainment', title: '接待交際費', items: ['同伴・アフター飲食代', '手土産代', 'イベント飲食費'] },
+          { id: 'transport', title: '交通費', items: ['タクシー代'] },
+          { id: 'communication', title: '通信・システム費', items: ['システム使用料', 'インターネット代', '電話代'] },
+          { id: 'operation', title: '店舗運営費', items: ['カラオケ・音響リース代', '清掃費', '害虫駆除費', '備品修理・メンテナンス費', '制服・衣装代', '雑費（インク等）'] },
+          { id: 'fees', title: '手数料', items: ['クレジットカード決済手数料', '振込手数料'] },
+          { id: 'taxes', title: '税金・法定費用', items: ['消費税', '事業税・住民税', '固定資産税', '風営法関連費用'] },
+        ];
+
+        // --- アプリケーションの状態 ---
+        const AppState = {
+            currentMonth: new Date().toISOString().slice(0, 7),
+            data: {},
+            expanded: {} // { categoryId: boolean }
+        };
+
+        // --- 安全なlocalStorageラッパー ---
+        const safeStorage = {
+            getItem: (key) => {
+                try { return localStorage.getItem(key); } catch (e) { return null; }
+            },
+            setItem: (key, value) => {
+                try { localStorage.setItem(key, value); } catch (e) { console.warn('Save failed', e); }
+            }
+        };
+
+        // --- 初期化処理 ---
+        function init() {
+            // 初期展開状態の設定（全て開く）
+            INITIAL_CATEGORIES.forEach(cat => {
+                AppState.expanded[cat.id] = true;
+            });
+            
+            // データ読み込みと描画
+            loadDataForMonth(AppState.currentMonth);
+            renderApp();
+        }
+
+        function loadDataForMonth(month) {
+            const json = safeStorage.getItem(`expense_data_${month}`);
+            if (json) {
+                try {
+                    AppState.data = JSON.parse(json);
+                } catch (e) {
+                    AppState.data = {};
+                }
+            } else {
+                AppState.data = {};
+            }
+        }
+
+        function saveData() {
+            safeStorage.setItem(`expense_data_${AppState.currentMonth}`, JSON.stringify(AppState.data));
+            updateTotals(); // 合計金額の表示更新
+        }
+
+        // --- 計算ロジック ---
+        function calculateCategoryTotal(catIndex) {
+            let total = 0;
+            INITIAL_CATEGORIES[catIndex].items.forEach((_, itemIndex) => {
+                const key = `${catIndex}-${itemIndex}`;
+                total += AppState.data[key]?.amount || 0;
+            });
+            return total;
+        }
+
+        function calculateGrandTotal() {
+            let total = 0;
+            INITIAL_CATEGORIES.forEach((_, index) => {
+                total += calculateCategoryTotal(index);
+            });
+            return total;
+        }
+
+        // --- イベントハンドラ ---
+        
+        // 月変更
+        window.handleMonthChange = (e) => {
+            AppState.currentMonth = e.target.value;
+            loadDataForMonth(AppState.currentMonth);
+            renderApp(); // 全体再描画
+        };
+
+        // 金額変更
+        window.handleAmountChange = (catIndex, itemIndex, el) => {
+            const key = `${catIndex}-${itemIndex}`;
+            const val = el.value === '' ? 0 : parseInt(el.value, 10);
+            
+            if (!AppState.data[key]) AppState.data[key] = {};
+            AppState.data[key].amount = val;
+            
+            saveData();
+        };
+
+        // メモ変更
+        window.handleNoteChange = (catIndex, itemIndex, el) => {
+            const key = `${catIndex}-${itemIndex}`;
+            if (!AppState.data[key]) AppState.data[key] = {};
+            AppState.data[key].note = el.value;
+            saveData();
+        };
+
+        // 画像アップロード
+        window.handleImageUpload = (catIndex, itemIndex, el) => {
+            const file = el.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const key = `${catIndex}-${itemIndex}`;
+                if (!AppState.data[key]) AppState.data[key] = {};
+                AppState.data[key].image = reader.result;
+                saveData();
+                renderApp(); // 画像表示のため再描画
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // 画像削除
+        window.removeImage = (catIndex, itemIndex) => {
+            const key = `${catIndex}-${itemIndex}`;
+            if (AppState.data[key]) {
+                delete AppState.data[key].image;
+                saveData();
+                renderApp();
+            }
+        };
+
+        // カテゴリ開閉
+        window.toggleCategory = (catId) => {
+            AppState.expanded[catId] = !AppState.expanded[catId];
+            
+            // DOMのみ更新（全体再描画はしない）
+            const content = document.getElementById(`cat-content-${catId}`);
+            const icon = document.getElementById(`cat-icon-${catId}`);
+            
+            if (AppState.expanded[catId]) {
+                content.classList.remove('hidden');
+                icon.innerHTML = ICONS.chevronUp;
+            } else {
+                content.classList.add('hidden');
+                icon.innerHTML = ICONS.chevronDown;
+            }
+        };
+
+        // データクリア
+        window.clearData = () => {
+            if (confirm('今月のデータを全て消去しますか？')) {
+                AppState.data = {};
+                saveData();
+                renderApp();
+            }
+        };
+
+        // 印刷
+        window.printReport = () => {
+            window.print();
+        };
+
+        // モーダル表示
+        window.showPreview = (imgSrc) => {
+            const modal = document.getElementById('modal-container');
+            modal.innerHTML = `
+                <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 print:hidden" onclick="closePreview()">
+                    <div class="relative max-w-full max-h-full" onclick="event.stopPropagation()">
+                        <img src="${imgSrc}" class="max-w-full max-h-[90vh] object-contain rounded" alt="Preview">
+                        <button class="absolute -top-10 right-0 text-white p-2" onclick="closePreview()">
+                            ${ICONS.xLarge}
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        window.closePreview = () => {
+            document.getElementById('modal-container').innerHTML = '';
+        };
+
+        // --- 表示更新（DOM操作） ---
+        
+        // 合計金額のみ更新（入力パフォーマンス用）
+        function updateTotals() {
+            // 全体合計
+            const grandTotal = calculateGrandTotal();
+            document.querySelectorAll('.grand-total-display').forEach(el => {
+                el.textContent = '¥' + grandTotal.toLocaleString();
+            });
+
+            // カテゴリ別合計
+            INITIAL_CATEGORIES.forEach((cat, index) => {
+                const total = calculateCategoryTotal(index);
+                const el = document.getElementById(`cat-total-${cat.id}`);
+                if (el) el.textContent = '¥' + total.toLocaleString();
+            });
+        }
+
+        // --- メインレンダリング ---
+        function renderApp() {
+            const app = document.getElementById('app');
+            const grandTotal = calculateGrandTotal().toLocaleString();
+            const [year, month] = AppState.currentMonth.split('-');
+
+            let html = `
+                <!-- ヘッダー -->
+                <header class="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md print:hidden">
+                    <div class="max-w-3xl mx-auto flex justify-between items-center">
+                        <div>
+                            <h1 class="text-lg font-bold">店舗経費マネージャー</h1>
+                            <input 
+                                type="month" 
+                                value="${AppState.currentMonth}"
+                                onchange="handleMonthChange(event)"
+                                class="bg-slate-800 text-white text-sm border-none rounded mt-1 px-2 py-1 focus:ring-1 focus:ring-blue-400 outline-none"
+                            />
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs text-slate-400">合計支出</p>
+                            <p class="text-2xl font-bold text-green-400 grand-total-display">¥${grandTotal}</p>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- 印刷用ヘッダー -->
+                <div class="hidden print:block p-8 pb-4 max-w-3xl mx-auto">
+                    <h1 class="text-3xl font-bold text-center mb-2">${year}年${month}月 店舗経費報告書</h1>
+                    <div class="text-right mt-4">
+                        <span class="text-xl font-bold border-b-2 border-black pb-1">合計: <span class="grand-total-display">¥${grandTotal}</span></span>
+                    </div>
+                </div>
+
+                <!-- メインリスト -->
+                <main class="max-w-3xl mx-auto p-4 space-y-4 print:p-0 print:space-y-6">
+            `;
+
+            // カテゴリループ
+            INITIAL_CATEGORIES.forEach((cat, catIndex) => {
+                const catTotal = calculateCategoryTotal(catIndex).toLocaleString();
+                const isExpanded = AppState.expanded[cat.id];
+                
+                html += `
+                    <div class="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200 print:shadow-none print:border-gray-300 print:break-inside-avoid break-inside-avoid">
+                        <!-- カテゴリヘッダー -->
+                        <div 
+                            class="bg-slate-50 p-4 flex justify-between items-center cursor-pointer select-none print:bg-gray-100"
+                            onclick="toggleCategory('${cat.id}')"
+                        >
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500 print:hidden" id="cat-icon-${cat.id}">
+                                    ${isExpanded ? ICONS.chevronUp : ICONS.chevronDown}
+                                </span>
+                                <h2 class="font-bold text-lg text-slate-700">${cat.title}</h2>
+                            </div>
+                            <div class="font-bold text-slate-700" id="cat-total-${cat.id}">
+                                ¥${catTotal}
+                            </div>
+                        </div>
+
+                        <!-- アイテムリスト -->
+                        <div id="cat-content-${cat.id}" class="${isExpanded ? '' : 'hidden'} print:block p-2">
+                `;
+
+                // アイテムループ
+                cat.items.forEach((item, itemIndex) => {
+                    const key = `${catIndex}-${itemIndex}`;
+                    const itemData = AppState.data[key] || { amount: 0, note: '', image: null };
+                    
+                    // 値が0の場合は空文字表示にする（UXのため）
+                    const amountValue = itemData.amount === 0 ? '' : itemData.amount;
+
+                    html += `
+                        <div class="flex flex-col border-b border-gray-100 last:border-0 py-3 px-2 print:border-gray-300">
+                            <!-- 入力行 -->
+                            <div class="flex justify-between items-center gap-3">
+                                <label class="flex-1 font-medium text-gray-700 text-sm">${item}</label>
+                                <div class="flex items-center gap-2 w-1/2 justify-end">
+                                    <span class="text-gray-400 text-sm">¥</span>
+                                    <input
+                                        type="number"
+                                        inputmode="decimal"
+                                        value="${amountValue}"
+                                        oninput="handleAmountChange(${catIndex}, ${itemIndex}, this)"
+                                        placeholder="0"
+                                        class="w-full max-w-[120px] text-right p-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-lg print:border-none print:bg-transparent print:w-auto print:pr-0"
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- オプション行 -->
+                            <div class="mt-2 flex items-center justify-between gap-2 print:mt-1">
+                                <input
+                                    type="text"
+                                    value="${itemData.note || ''}"
+                                    oninput="handleNoteChange(${catIndex}, ${itemIndex}, this)"
+                                    placeholder="メモを入力..."
+                                    class="flex-1 text-xs text-gray-500 bg-gray-50 border-none rounded px-2 py-1 focus:ring-1 focus:ring-blue-200 print:bg-transparent print:pl-0 print:text-gray-600"
+                                />
+                                
+                                <div class="flex items-center gap-2">
+                                    ${itemData.image ? `
+                                        <div class="relative group">
+                                            <img 
+                                                src="${itemData.image}" 
+                                                class="w-8 h-8 object-cover rounded border border-gray-300 cursor-pointer print:hidden"
+                                                onclick="showPreview('${itemData.image}')"
+                                                alt="Thumb"
+                                            />
+                                            <button 
+                                                onclick="removeImage(${catIndex}, ${itemIndex})"
+                                                class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 print:hidden opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                ${ICONS.x}
+                                            </button>
+                                        </div>
+                                    ` : `
+                                        <label class="cursor-pointer text-gray-400 hover:text-blue-500 print:hidden p-1">
+                                            <input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                class="hidden"
+                                                onchange="handleImageUpload(${catIndex}, ${itemIndex}, this)"
+                                            />
+                                            ${ICONS.camera}
+                                        </label>
+                                    `}
+                                </div>
+                            </div>
+
+                            <!-- 印刷用画像表示 -->
+                            ${itemData.image ? `
+                                <div class="hidden print:block mt-2">
+                                    <p class="text-[10px] text-gray-400 mb-1">添付画像:</p>
+                                    <img src="${itemData.image}" class="max-h-[80px] object-contain border border-gray-200" alt="添付" />
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                </main>
+
+                <!-- フッターアクション -->
+                <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg print:hidden z-20 safe-area-bottom">
+                    <div class="max-w-3xl mx-auto flex justify-between gap-4">
+                        <button 
+                            onclick="clearData()"
+                            class="flex items-center justify-center gap-2 px-4 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+                        >
+                            ${ICONS.trash}
+                            クリア
+                        </button>
+                        
+                        <button 
+                            onclick="printReport()"
+                            class="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-700 active:scale-95 transition-all font-bold"
+                        >
+                            ${ICONS.printer}
+                            レポートを作成 / 印刷
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            app.innerHTML = html;
+        }
+
+        // アプリケーション開始
+        init();
+
+    </script>
+</body>
+</html>
