@@ -1,0 +1,354 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Camera, Printer, Trash2, Save, FileText, ChevronDown, ChevronUp, Plus, Image as ImageIcon, X } from 'lucide-react';
+
+// --- 初期データ定義 ---
+const INITIAL_CATEGORIES = [
+  {
+    id: 'personnel',
+    title: '人件費',
+    items: ['キャスト給与']
+  },
+  {
+    id: 'rent',
+    title: '家賃・固定費',
+    items: ['店舗家賃', '共益費／管理費', '駐車場代']
+  },
+  {
+    id: 'utilities',
+    title: '水道光熱費',
+    items: ['電気代', '水道代', 'ガス代']
+  },
+  {
+    id: 'supplies',
+    title: '仕入れ・消耗品費',
+    items: ['酒類', 'ソフトドリンク', 'おしぼり', 'おかし', '消耗品（洗剤・トイレットペーパー等）', 'グラス・食器補充']
+  },
+  {
+    id: 'ads',
+    title: '広告宣伝費',
+    items: ['ポータルサイト掲載料']
+  },
+  {
+    id: 'entertainment',
+    title: '接待交際費',
+    items: ['同伴・アフター飲食代', '手土産代', 'イベント飲食費']
+  },
+  {
+    id: 'transport',
+    title: '交通費',
+    items: ['タクシー代']
+  },
+  {
+    id: 'communication',
+    title: '通信・システム費',
+    items: ['システム使用料', 'インターネット代', '電話代']
+  },
+  {
+    id: 'operation',
+    title: '店舗運営費',
+    items: ['カラオケ・音響リース代', '清掃費', '害虫駆除費', '備品修理・メンテナンス費', '制服・衣装代', '雑費（インク等）']
+  },
+  {
+    id: 'fees',
+    title: '手数料',
+    items: ['クレジットカード決済手数料', '振込手数料']
+  },
+  {
+    id: 'taxes',
+    title: '税金・法定費用',
+    items: ['消費税', '事業税・住民税', '固定資産税', '風営法関連費用']
+  },
+];
+
+export default function ExpenseApp() {
+  // --- State ---
+  // データ構造: { [itemId]: { amount: number, note: string, image: string(base64) } }
+  const [expenseData, setExpenseData] = useState({});
+  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [expandedCategories, setExpandedCategories] = useState({});
+  const [showPreviewModal, setShowPreviewModal] = useState(null); // 画像プレビュー用
+
+  // --- 初期化 & ローカルストレージ読み込み ---
+  useEffect(() => {
+    const savedData = localStorage.getItem(`expense_data_${currentMonth}`);
+    if (savedData) {
+      setExpenseData(JSON.parse(savedData));
+    } else {
+      setExpenseData({});
+    }
+    
+    // 全カテゴリを展開状態にする
+    const allExpanded = INITIAL_CATEGORIES.reduce((acc, cat) => ({...acc, [cat.id]: true}), {});
+    setExpandedCategories(allExpanded);
+  }, [currentMonth]);
+
+  // --- データ保存 ---
+  useEffect(() => {
+    localStorage.setItem(`expense_data_${currentMonth}`, JSON.stringify(expenseData));
+  }, [expenseData, currentMonth]);
+
+  // --- ハンドラー ---
+  const handleAmountChange = (categoryIndex, itemIndex, value) => {
+    const key = `${categoryIndex}-${itemIndex}`;
+    setExpenseData(prev => ({
+      ...prev,
+      [key]: { ...prev[key], amount: value === '' ? 0 : parseInt(value, 10) }
+    }));
+  };
+
+  const handleNoteChange = (categoryIndex, itemIndex, text) => {
+    const key = `${categoryIndex}-${itemIndex}`;
+    setExpenseData(prev => ({
+      ...prev,
+      [key]: { ...prev[key], note: text }
+    }));
+  };
+
+  const handleImageUpload = (categoryIndex, itemIndex, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const key = `${categoryIndex}-${itemIndex}`;
+      setExpenseData(prev => ({
+        ...prev,
+        [key]: { ...prev[key], image: reader.result }
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = (categoryIndex, itemIndex) => {
+    const key = `${categoryIndex}-${itemIndex}`;
+    setExpenseData(prev => {
+      const newData = { ...prev };
+      if (newData[key]) {
+        delete newData[key].image;
+      }
+      return newData;
+    });
+  };
+
+  const toggleCategory = (id) => {
+    setExpandedCategories(prev => ({...prev, [id]: !prev[id]}));
+  };
+
+  const clearData = () => {
+    if (confirm('今月のデータを全て消去しますか？この操作は取り消せません。')) {
+      setExpenseData({});
+    }
+  };
+
+  const printReport = () => {
+    window.print();
+  };
+
+  // --- 計算ロジック ---
+  const calculateCategoryTotal = (catIndex) => {
+    let total = 0;
+    INITIAL_CATEGORIES[catIndex].items.forEach((_, itemIndex) => {
+      const key = `${catIndex}-${itemIndex}`;
+      total += expenseData[key]?.amount || 0;
+    });
+    return total;
+  };
+
+  const calculateGrandTotal = () => {
+    let total = 0;
+    INITIAL_CATEGORIES.forEach((cat, catIndex) => {
+      total += calculateCategoryTotal(catIndex);
+    });
+    return total;
+  };
+
+  // --- レンダリング ---
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-20 print:bg-white print:pb-0">
+      
+      {/* ヘッダー (画面上部固定) */}
+      <header className="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md print:hidden">
+        <div className="max-w-3xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-lg font-bold">店舗経費マネージャー</h1>
+            <input 
+              type="month" 
+              value={currentMonth}
+              onChange={(e) => setCurrentMonth(e.target.value)}
+              className="bg-slate-800 text-white text-sm border-none rounded mt-1 px-2 py-1 focus:ring-1 focus:ring-blue-400"
+            />
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-slate-400">合計支出</p>
+            <p className="text-2xl font-bold text-green-400">¥{calculateGrandTotal().toLocaleString()}</p>
+          </div>
+        </div>
+      </header>
+
+      {/* 印刷用ヘッダー (通常時は非表示) */}
+      <div className="hidden print:block p-8 pb-4">
+        <h1 className="text-3xl font-bold text-center mb-2">{currentMonth.split('-')[0]}年{currentMonth.split('-')[1]}月 店舗経費報告書</h1>
+        <div className="text-right mt-4">
+          <span className="text-xl font-bold border-b-2 border-black pb-1">合計: ¥{calculateGrandTotal().toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* メインコンテンツ */}
+      <main className="max-w-3xl mx-auto p-4 space-y-4 print:p-8 print:space-y-6">
+        
+        {INITIAL_CATEGORIES.map((category, catIndex) => {
+          const catTotal = calculateCategoryTotal(catIndex);
+          const isExpanded = expandedCategories[category.id];
+
+          return (
+            <div key={category.id} className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200 print:shadow-none print:border-gray-300 print:break-inside-avoid">
+              
+              {/* カテゴリヘッダー */}
+              <div 
+                className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer select-none print:bg-gray-100"
+                onClick={() => toggleCategory(category.id)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 print:hidden">
+                    {isExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                  </span>
+                  <h2 className="font-bold text-lg text-slate-700">{category.title}</h2>
+                </div>
+                <div className="font-bold text-slate-700">
+                  ¥{catTotal.toLocaleString()}
+                </div>
+              </div>
+
+              {/* アイテムリスト */}
+              {(isExpanded || true) && ( // 印刷時は強制表示にするためCSSで制御、JSでは常にレンダリングしておく方が安全だが簡易実装
+                <div className={`${isExpanded ? 'block' : 'hidden'} print:block p-2`}>
+                  {category.items.map((item, itemIndex) => {
+                    const key = `${catIndex}-${itemIndex}`;
+                    const data = expenseData[key] || { amount: 0, note: '', image: null };
+
+                    return (
+                      <div key={itemIndex} className="flex flex-col border-b border-gray-100 last:border-0 py-3 px-2">
+                        
+                        {/* 入力行 */}
+                        <div className="flex justify-between items-center gap-3">
+                          <label className="flex-1 font-medium text-gray-700 text-sm">{item}</label>
+                          <div className="flex items-center gap-2 w-1/2 justify-end">
+                            <span className="text-gray-400 text-sm">¥</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              value={data.amount || ''}
+                              onChange={(e) => handleAmountChange(catIndex, itemIndex, e.target.value)}
+                              placeholder="0"
+                              className="w-full max-w-[120px] text-right p-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-lg print:border-none print:bg-transparent print:w-auto"
+                            />
+                          </div>
+                        </div>
+
+                        {/* オプション行 (メモ & カメラ) - 印刷時は値がある場合のみ表示 */}
+                        <div className="mt-2 flex items-center justify-between gap-2 print:mt-1">
+                          <input
+                            type="text"
+                            value={data.note || ''}
+                            onChange={(e) => handleNoteChange(catIndex, itemIndex, e.target.value)}
+                            placeholder="メモを入力..."
+                            className="flex-1 text-xs text-gray-500 bg-gray-50 border-none rounded px-2 py-1 focus:ring-1 focus:ring-blue-200 print:bg-transparent print:pl-0"
+                          />
+                          
+                          {/* カメラボタン & 画像プレビュー */}
+                          <div className="flex items-center gap-2">
+                            {data.image ? (
+                              <div className="relative group">
+                                <img 
+                                  src={data.image} 
+                                  alt="Receipt" 
+                                  className="w-8 h-8 object-cover rounded border border-gray-300 cursor-pointer"
+                                  onClick={() => setShowPreviewModal(data.image)}
+                                />
+                                <button 
+                                  onClick={() => removeImage(catIndex, itemIndex)}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 print:hidden opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="cursor-pointer text-gray-400 hover:text-blue-500 print:hidden p-1">
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  capture="environment" 
+                                  className="hidden"
+                                  onChange={(e) => handleImageUpload(catIndex, itemIndex, e)}
+                                />
+                                <Camera size={20} />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 印刷用の画像表示エリア (小さく表示) */}
+                        {data.image && (
+                          <div className="hidden print:block mt-2">
+                             <p className="text-[10px] text-gray-400 mb-1">添付画像:</p>
+                             <img src={data.image} className="max-h-[100px] object-contain border border-gray-200" alt="添付" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </main>
+
+      {/* フッターアクション (画面下部固定) */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg print:hidden z-20">
+        <div className="max-w-3xl mx-auto flex justify-between gap-4">
+          <button 
+            onClick={clearData}
+            className="flex items-center justify-center gap-2 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+          >
+            <Trash2 size={18} />
+            クリア
+          </button>
+          
+          <button 
+            onClick={printReport}
+            className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-700 active:scale-95 transition-all font-bold"
+          >
+            <Printer size={20} />
+            レポートを作成 / 印刷
+          </button>
+        </div>
+      </div>
+
+      {/* 画像プレビューモーダル */}
+      {showPreviewModal && (
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowPreviewModal(null)}
+        >
+          <div className="relative max-w-full max-h-full">
+            <img src={showPreviewModal} alt="Preview" className="max-w-full max-h-[90vh] object-contain rounded" />
+            <button className="absolute -top-10 right-0 text-white p-2">
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 印刷用スタイル調整 */}
+      <style>{`
+        @media print {
+          @page { margin: 15mm; }
+          body { -webkit-print-color-adjust: exact; background-color: white; }
+          .print\\:hidden { display: none !important; }
+          .print\\:block { display: block !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
